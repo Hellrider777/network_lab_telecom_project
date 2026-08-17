@@ -5,11 +5,13 @@ let audioCtx = null;
 let CONFIG = null;
 let detectedTones = [];
 
-// Throughput measurement (shared audio clock — both tx and rx run on the
-// same page/AudioContext, so ctx.currentTime is a valid common timeline).
-let txDataStartTime = null; // when the first tone after START begins playing
-let txDataBitCount = 0;     // bits carried in the data phase (excludes START/STOP)
-let rxLastBitTime = null;   // when the last data tone was actually detected
+// Throughput measurement — timed entirely on the receiver's own clock.
+// Transmitter and receiver are meant to be separate devices/tabs with no
+// shared clock, so timing can't rely on anything the transmitter recorded;
+// instead we time from the first data tone the receiver detects to the
+// last one, which also naturally excludes START/STOP tone time.
+let rxDataStartTime = null; // when the first data tone was detected
+let rxLastBitTime = null;   // when the last data tone was detected
 
 function getAudioContext() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -45,15 +47,9 @@ async function transmitMessage() {
     return;
   }
 
-  const { sequence, finalBitstream } = await res.json();
+  const { sequence } = await res.json();
 
-  const scheduleStart = ctx.currentTime;
-  // Data phase = everything between START and STOP; that's the window
-  // throughput is measured over, so START/STOP tone time is excluded.
-  txDataStartTime = scheduleStart + cfg.toneDur;
-  txDataBitCount = finalBitstream.length;
-
-  let now = scheduleStart;
+  let now = ctx.currentTime;
   sequence.forEach((freq) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -104,6 +100,7 @@ async function startListening() {
   function handleReceivedTone(freq) {
     if (freq === cfg.startTone) {
       detectedTones = [];
+      rxDataStartTime = null;
       rxLastBitTime = null;
       document.getElementById('rxStatus').innerText = 'Status: Receiving Frame...';
     } else if (freq === cfg.stopTone) {
@@ -116,6 +113,7 @@ async function startListening() {
     } else {
       const octalVal = cfg.freqs.indexOf(freq);
       if (octalVal !== -1) {
+        if (rxDataStartTime === null) rxDataStartTime = ctx.currentTime; // first data tone
         detectedTones.push(octalVal);
         rxLastBitTime = ctx.currentTime; // moment this data tone was confirmed
       }
@@ -180,12 +178,13 @@ async function decodeFrame(octalArray) {
 
   const throughputEl = document.getElementById('rxThroughput');
   if (throughputEl) {
-    if (txDataStartTime !== null && rxLastBitTime !== null && rxLastBitTime > txDataStartTime) {
-      const seconds = rxLastBitTime - txDataStartTime;
-      const bps = txDataBitCount / seconds;
-      throughputEl.innerText = `Throughput: ${txDataBitCount} bits / ${seconds.toFixed(3)}s = ${bps.toFixed(2)} bps`;
+    if (rxDataStartTime !== null && rxLastBitTime !== null && rxLastBitTime > rxDataStartTime) {
+      const bitCount = octalArray.length * 3; // 3 bits per detected tone
+      const seconds = rxLastBitTime - rxDataStartTime;
+      const bps = bitCount / seconds;
+      throughputEl.innerText = `Throughput: ${bitCount} bits / ${seconds.toFixed(3)}s = ${bps.toFixed(2)} bps`;
     } else {
-      throughputEl.innerText = 'Throughput: unavailable (play tones in this tab before listening)';
+      throughputEl.innerText = 'Throughput: unavailable (need at least 2 data tones)';
     }
   }
 }
