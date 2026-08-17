@@ -5,6 +5,7 @@ app = Flask(__name__)
 FREQS = [1200, 1400, 1600, 1800, 2000, 2200, 2400, 2600]
 START_TONE = 3000
 STOP_TONE = 3400
+SYNC_TONE = 800
 TONE_DUR = 0.20
 
 
@@ -40,7 +41,7 @@ def index():
 
 @app.route('/api/config')
 def config():
-    return jsonify(freqs=FREQS, startTone=START_TONE, stopTone=STOP_TONE, toneDur=TONE_DUR)
+    return jsonify(freqs=FREQS, startTone=START_TONE, stopTone=STOP_TONE, syncTone=SYNC_TONE, toneDur=TONE_DUR)
 
 
 @app.route('/api/transmit', methods=['POST'])
@@ -66,9 +67,14 @@ def transmit():
     while len(final_bitstream) % 3 != 0:
         final_bitstream += '0'
 
+    # A SYNC tone precedes every data tone so the receiver always sees a
+    # frequency edge before each symbol, even when two symbols in a row
+    # carry the same octal value (which would otherwise be indistinguishable
+    # from one long tone).
     sequence = [START_TONE]
     for i in range(0, len(final_bitstream), 3):
         octal_val = int(final_bitstream[i:i + 3], 2)
+        sequence.append(SYNC_TONE)
         sequence.append(FREQS[octal_val])
     sequence.append(STOP_TONE)
 

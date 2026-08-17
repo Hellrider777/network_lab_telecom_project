@@ -82,7 +82,7 @@ async function startListening() {
   let toneHoldCount = 0;
 
   function matchTone(freq) {
-    const all = [...cfg.freqs, cfg.startTone, cfg.stopTone];
+    const all = [...cfg.freqs, cfg.startTone, cfg.stopTone, cfg.syncTone];
     for (const f of all) {
       if (Math.abs(f - freq) < 45) return f; // 45 Hz tolerance window
     }
@@ -96,6 +96,10 @@ async function startListening() {
     } else if (freq === cfg.stopTone) {
       document.getElementById('rxStatus').innerText = 'Status: Frame Received. Processing...';
       decodeFrame(detectedTones);
+    } else if (freq === cfg.syncTone) {
+      // Sync marker only — sent before every data tone so that two
+      // consecutive identical symbols are always separated by a frequency
+      // edge (otherwise they'd be indistinguishable from one long tone).
     } else {
       const octalVal = cfg.freqs.indexOf(freq);
       if (octalVal !== -1) detectedTones.push(octalVal);
