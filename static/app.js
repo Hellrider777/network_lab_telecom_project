@@ -5,6 +5,12 @@ let audioCtx = null;
 let CONFIG = null;
 let detectedTones = [];
 
+// Throughput measurement (shared audio clock — both tx and rx run on the
+// same page/AudioContext, so ctx.currentTime is a valid common timeline).
+let txDataStartTime = null; // when the first tone after START begins playing
+let txDataBitCount = 0;     // bits carried in the data phase (excludes START/STOP)
+let rxLastBitTime = null;   // when the last data tone was actually detected
+
 function getAudioContext() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   return audioCtx;
@@ -39,9 +45,15 @@ async function transmitMessage() {
     return;
   }
 
-  const { sequence } = await res.json();
+  const { sequence, finalBitstream } = await res.json();
 
-  let now = ctx.currentTime;
+  const scheduleStart = ctx.currentTime;
+  // Data phase = everything between START and STOP; that's the window
+  // throughput is measured over, so START/STOP tone time is excluded.
+  txDataStartTime = scheduleStart + cfg.toneDur;
+  txDataBitCount = finalBitstream.length;
+
+  let now = scheduleStart;
   sequence.forEach((freq) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -92,6 +104,7 @@ async function startListening() {
   function handleReceivedTone(freq) {
     if (freq === cfg.startTone) {
       detectedTones = [];
+      rxLastBitTime = null;
       document.getElementById('rxStatus').innerText = 'Status: Receiving Frame...';
     } else if (freq === cfg.stopTone) {
       document.getElementById('rxStatus').innerText = 'Status: Frame Received. Processing...';
@@ -102,7 +115,10 @@ async function startListening() {
       // edge (otherwise they'd be indistinguishable from one long tone).
     } else {
       const octalVal = cfg.freqs.indexOf(freq);
-      if (octalVal !== -1) detectedTones.push(octalVal);
+      if (octalVal !== -1) {
+        detectedTones.push(octalVal);
+        rxLastBitTime = ctx.currentTime; // moment this data tone was confirmed
+      }
     }
   }
 
@@ -161,6 +177,17 @@ async function decodeFrame(octalArray) {
   }
 
   document.getElementById('rxOutput').innerHTML = `Decoded: ${outputHTML} (Err Bit: ${errorIndex})`;
+
+  const throughputEl = document.getElementById('rxThroughput');
+  if (throughputEl) {
+    if (txDataStartTime !== null && rxLastBitTime !== null && rxLastBitTime > txDataStartTime) {
+      const seconds = rxLastBitTime - txDataStartTime;
+      const bps = txDataBitCount / seconds;
+      throughputEl.innerText = `Throughput: ${txDataBitCount} bits / ${seconds.toFixed(3)}s = ${bps.toFixed(2)} bps`;
+    } else {
+      throughputEl.innerText = 'Throughput: unavailable (play tones in this tab before listening)';
+    }
+  }
 }
 
 document.getElementById('txBtn').addEventListener('click', transmitMessage);
