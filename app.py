@@ -149,12 +149,14 @@ def receive():
     error_index = -1
 
     if legacy:
+        block_num = 0
         for i in range(0, len(raw_bitstream) - 6, 7):
             block = raw_bitstream[i:i + 7]
             data_bits, err_in_block = decode_hamming74(block)
             decoded_message += data_bits
             if err_in_block != -1:
-                error_index = i + err_in_block
+                error_index = block_num * 4  # index into decodedMessage, not the raw 7-bit stream
+            block_num += 1
     else:
         group_bits = 7 * INTERLEAVE_DEPTH
         block_num = 0
