@@ -1,0 +1,48 @@
+body {
+  font-family: monospace;
+  padding: 15px;
+  background: #121212;
+  color: #fff;
+}
+
+.card {
+  background: #1e1e1e;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+button {
+  background: #007acc;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+input {
+  width: 90%;
+  padding: 8px;
+  font-size: 16px;
+  margin: 5px 0;
+  background: #333;
+  color: white;
+  border: 1px solid #555;
+}
+
+.underlined {
+  text-decoration: underline;
+  color: #ff5252;
+  font-weight: bold;
+}
+
+.output {
+  font-size: 18px;
+  margin-top: 10px;
+  background: #000;
+  padding: 10px;
+  border-radius: 4px;
+}

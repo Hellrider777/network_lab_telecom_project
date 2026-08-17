@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lab 03 - Base8 Acoustic Modem</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+  <h2>Base-8 Acoustic Modem (Lab 03)</h2>
+
+  <!-- TRANSMITTER SECTION -->
+  <div class="card">
+    <h3>Phone 1: Transmitter</h3>
+    <label>Message (Bits, e.g. 0100011):</label><br>
+    <input type="text" id="txMsg" value="0100011"><br>
+
+    <label>Simulate Error Bit Index (0-based, or -1 for none):</label><br>
+    <input type="number" id="txErr" value="2"><br>
+
+    <button id="txBtn">PLAY AUDIO TONES</button>
+  </div>
+
+  <!-- RECEIVER SECTION -->
+  <div class="card">
+    <h3>Phone 2: Receiver</h3>
+    <button id="rxBtn">START LISTENING (MIC)</button>
+    <div id="rxStatus">Status: Idle</div>
+    <div class="output" id="rxOutput">Received: --</div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
