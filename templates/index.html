@@ -19,12 +19,18 @@
     <label>Simulate Error Bit Index (0-based, or -1 for none):</label><br>
     <input type="number" id="txErr" value="2"><br>
 
+    <label>Delay Between Tones (ms):</label><br>
+    <input type="number" id="txDelay" value="0" min="0"><br>
+
+    <label><input type="checkbox" id="txLegacy"> Use legacy Hamming layout (no interleaving)</label><br>
+
     <button id="txBtn">PLAY AUDIO TONES</button>
   </div>
 
   <!-- RECEIVER SECTION -->
   <div class="card">
     <h3>Phone 2: Receiver</h3>
+    <label><input type="checkbox" id="rxLegacy"> Use legacy Hamming layout (no interleaving)</label><br>
     <button id="rxBtn">START LISTENING (MIC)</button>
     <div id="rxStatus">Status: Idle</div>
     <div class="output" id="rxOutput">Received: --</div>

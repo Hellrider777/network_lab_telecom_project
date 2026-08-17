@@ -34,11 +34,13 @@ async function transmitMessage() {
 
   const bits = document.getElementById('txMsg').value.trim();
   const errIdx = parseInt(document.getElementById('txErr').value, 10);
+  const delaySec = Math.max(0, parseInt(document.getElementById('txDelay').value, 10) || 0) / 1000;
+  const legacy = document.getElementById('txLegacy').checked;
 
   const res = await fetch('/api/transmit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bits, errIdx })
+    body: JSON.stringify({ bits, errIdx, legacy })
   });
 
   if (!res.ok) {
@@ -49,6 +51,10 @@ async function transmitMessage() {
 
   const { sequence } = await res.json();
 
+  // The receiver detects tones by their acoustic presence (frequency held
+  // steady for a few frames) rather than by sampling a fixed clock, and the
+  // differential tone encoding guarantees a frequency edge before every
+  // symbol — so it never needs to be told this delay; any gap here just works.
   let now = ctx.currentTime;
   sequence.forEach((freq) => {
     const osc = ctx.createOscillator();
@@ -65,7 +71,7 @@ async function transmitMessage() {
 
     osc.start(now);
     osc.stop(now + cfg.toneDur);
-    now += cfg.toneDur;
+    now += cfg.toneDur + delaySec;
   });
 }
 
@@ -90,7 +96,7 @@ async function startListening() {
   let toneHoldCount = 0;
 
   function matchTone(freq) {
-    const all = [...cfg.freqs, cfg.startTone, cfg.stopTone, cfg.syncTone];
+    const all = [...cfg.freqs, cfg.startTone, cfg.stopTone];
     for (const f of all) {
       if (Math.abs(f - freq) < 45) return f; // 45 Hz tolerance window
     }
@@ -106,15 +112,14 @@ async function startListening() {
     } else if (freq === cfg.stopTone) {
       document.getElementById('rxStatus').innerText = 'Status: Frame Received. Processing...';
       decodeFrame(detectedTones);
-    } else if (freq === cfg.syncTone) {
-      // Sync marker only — sent before every data tone so that two
-      // consecutive identical symbols are always separated by a frequency
-      // edge (otherwise they'd be indistinguishable from one long tone).
     } else {
-      const octalVal = cfg.freqs.indexOf(freq);
-      if (octalVal !== -1) {
+      // Every non-start/stop tone is a data tone now — differential
+      // encoding guarantees it always differs from the previous tone, so
+      // there's no separate sync marker to filter out.
+      const toneIdx = cfg.freqs.indexOf(freq);
+      if (toneIdx !== -1) {
         if (rxDataStartTime === null) rxDataStartTime = ctx.currentTime; // first data tone
-        detectedTones.push(octalVal);
+        detectedTones.push(toneIdx);
         rxLastBitTime = ctx.currentTime; // moment this data tone was confirmed
       }
     }
@@ -151,17 +156,24 @@ async function startListening() {
           toneHoldCount = 0;
         }
       }
+    } else {
+      // Silence (e.g. a configurable inter-tone delay on the sender) is
+      // itself a symbol boundary — treat it as such rather than letting
+      // stale hold state carry across the gap.
+      lastDetectedFreq = 0;
+      toneHoldCount = 0;
     }
     requestAnimationFrame(processAudio);
   }
   processAudio();
 }
 
-async function decodeFrame(octalArray) {
+async function decodeFrame(toneIndices) {
+  const legacy = document.getElementById('rxLegacy').checked;
   const res = await fetch('/api/receive', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ octalArray })
+    body: JSON.stringify({ toneIndices, legacy })
   });
   const { decodedMessage, errorIndex } = await res.json();
 
@@ -179,7 +191,7 @@ async function decodeFrame(octalArray) {
   const throughputEl = document.getElementById('rxThroughput');
   if (throughputEl) {
     if (rxDataStartTime !== null && rxLastBitTime !== null && rxLastBitTime > rxDataStartTime) {
-      const bitCount = octalArray.length * 3; // 3 bits per detected tone
+      const bitCount = toneIndices.length * 3; // 3 bits per detected tone
       const seconds = rxLastBitTime - rxDataStartTime;
       const bps = bitCount / seconds;
       throughputEl.innerText = `Throughput: ${bitCount} bits / ${seconds.toFixed(3)}s = ${bps.toFixed(2)} bps`;
