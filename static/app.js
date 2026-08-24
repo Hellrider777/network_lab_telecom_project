@@ -75,10 +75,21 @@ async function startListening() {
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') await ctx.resume();
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  // Disable speech-oriented processing: AGC/echo-cancellation/noise-suppression
+  // continuously re-adapt while listening and distort steady tones more the
+  // longer a frame runs, which is why longer messages decoded worse than short ones.
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    },
+    video: false,
+  });
   const source = ctx.createMediaStreamSource(stream);
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 4096; // High frequency resolution
+  analyser.smoothingTimeConstant = 0; // no cross-frame blending across tone transitions
   source.connect(analyser);
 
   const bufferLength = analyser.frequencyBinCount;
