@@ -75,14 +75,16 @@ async function startListening() {
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') await ctx.resume();
 
-  // Disable speech-oriented processing: AGC/echo-cancellation/noise-suppression
-  // continuously re-adapt while listening and distort steady tones more the
-  // longer a frame runs, which is why longer messages decoded worse than short ones.
+  // Echo-cancellation/noise-suppression actively try to detect and null out
+  // steady tones (echo cancellation especially, since it's designed to remove
+  // sound from your own speaker picked up by your own mic -- exactly this app's
+  // signal). AGC is kept on: it only scales input gain, and without it a quiet
+  // speaker/mic pairing can fall entirely below the detection threshold.
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: false,
       noiseSuppression: false,
-      autoGainControl: false,
+      autoGainControl: true,
     },
     video: false,
   });
