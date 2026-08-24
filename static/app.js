@@ -28,26 +28,9 @@ async function getConfig() {
 
 // --- TRANSMITTER ---
 async function transmitMessage() {
-  const cfg = await getConfig();
+  const { cfg, sequence } = await getSignal();
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') await ctx.resume();
-
-  const bits = document.getElementById('txMsg').value.trim();
-  const errIdx = parseInt(document.getElementById('txErr').value, 10);
-
-  const res = await fetch('/api/transmit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bits, errIdx })
-  });
-
-  if (!res.ok) {
-    const err = await res.json();
-    alert(err.error || 'Transmit failed');
-    return;
-  }
-
-  const { sequence } = await res.json();
 
   let now = ctx.currentTime;
   sequence.forEach((freq) => {
@@ -65,8 +48,62 @@ async function transmitMessage() {
 
     osc.start(now);
     osc.stop(now + cfg.toneDur);
-    now += cfg.toneDur;
+    now += cfg.toneDur + cfg.interToneGap;
   });
+}
+
+async function getSignal() {
+  const cfg = await getConfig();
+  const bits = document.getElementById('txMsg').value.trim();
+  const errIdx = parseInt(document.getElementById('txErr').value, 10);
+  const res = await fetch('/api/transmit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bits, errIdx })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Transmit failed');
+  }
+  return { cfg, sequence: (await res.json()).sequence };
+}
+
+function writeWav(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const writeString = (offset, value) => [...value].forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0)));
+  writeString(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, 'WAVE'); writeString(12, 'fmt '); view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  writeString(36, 'data'); view.setUint32(40, samples.length * 2, true);
+  samples.forEach((sample, index) => view.setInt16(44 + index * 2, Math.max(-1, Math.min(1, sample)) * 0x7fff, true));
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+async function downloadSignal() {
+  const { cfg, sequence } = await getSignal();
+  const sampleRate = 44100;
+  const frameDuration = cfg.toneDur + cfg.interToneGap;
+  const offline = new OfflineAudioContext(1, Math.ceil(sequence.length * frameDuration * sampleRate), sampleRate);
+  sequence.forEach((freq, index) => {
+    const oscillator = offline.createOscillator();
+    const gain = offline.createGain();
+    const start = index * frameDuration;
+    oscillator.frequency.value = freq;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.8, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + cfg.toneDur - 0.02);
+    oscillator.connect(gain); gain.connect(offline.destination);
+    oscillator.start(start); oscillator.stop(start + cfg.toneDur);
+  });
+  const rendered = await offline.startRendering();
+  const blob = writeWav(rendered.getChannelData(0), sampleRate);
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'acoustic-modem-signal.wav';
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 // --- RECEIVER ---
@@ -75,10 +112,19 @@ async function startListening() {
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') await ctx.resume();
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  document.getElementById('rxStatus').innerText = 'Status: Requesting microphone...';
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    },
+    video: false,
+  });
   const source = ctx.createMediaStreamSource(stream);
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 4096; // High frequency resolution
+  analyser.smoothingTimeConstant = 0;
   source.connect(analyser);
 
   const bufferLength = analyser.frequencyBinCount;
@@ -136,8 +182,9 @@ async function startListening() {
     const nyquist = ctx.sampleRate / 2;
     const peakFreq = maxIndex * (nyquist / bufferLength);
 
-    // Detect valid tone threshold (-55dB)
-    if (maxVal > -55) {
+    // Detect valid tone threshold. Manual gain control can produce quieter
+    // microphone input, especially when the speaker and receiver are apart.
+    if (maxVal > -75) {
       const matchedFreq = matchTone(peakFreq);
       if (matchedFreq !== null) {
         if (matchedFreq === lastDetectedFreq) {
@@ -150,7 +197,13 @@ async function startListening() {
           lastDetectedFreq = matchedFreq;
           toneHoldCount = 0;
         }
+      } else {
+        lastDetectedFreq = 0;
+        toneHoldCount = 0;
       }
+    } else {
+      lastDetectedFreq = 0;
+      toneHoldCount = 0;
     }
     requestAnimationFrame(processAudio);
   }
@@ -190,4 +243,12 @@ async function decodeFrame(octalArray) {
 }
 
 document.getElementById('txBtn').addEventListener('click', transmitMessage);
-document.getElementById('rxBtn').addEventListener('click', startListening);
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  downloadSignal().catch((error) => alert(error.message));
+});
+document.getElementById('rxBtn').addEventListener('click', () => {
+  startListening().catch((error) => {
+    console.error('Receiver could not start:', error);
+    document.getElementById('rxStatus').innerText = `Status: Microphone error (${error.name || 'unknown'})`;
+  });
+});

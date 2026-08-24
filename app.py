@@ -7,6 +7,7 @@ START_TONE = 3000
 STOP_TONE = 3400
 SYNC_TONE = 800
 TONE_DUR = 0.20
+INTER_TONE_GAP = 0.04
 
 
 def encode_hamming74(bits4):
@@ -41,7 +42,7 @@ def index():
 
 @app.route('/api/config')
 def config():
-    return jsonify(freqs=FREQS, startTone=START_TONE, stopTone=STOP_TONE, syncTone=SYNC_TONE, toneDur=TONE_DUR)
+    return jsonify(freqs=FREQS, startTone=START_TONE, stopTone=STOP_TONE, syncTone=SYNC_TONE, toneDur=TONE_DUR, interToneGap=INTER_TONE_GAP)
 
 
 @app.route('/api/transmit', methods=['POST'])
@@ -103,4 +104,4 @@ def receive():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', debug=True)
