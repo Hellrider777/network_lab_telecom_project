@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lab 03 - Base8 Acoustic Modem</title>
+  <title>Lab 03 - 16-Frequency Acoustic Modem</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-  <h2>Base-8 Acoustic Modem (Lab 03)</h2>
+  <h2>16-Frequency Acoustic Modem (Lab 03)</h2>
 
   <!-- TRANSMITTER SECTION -->
   <div class="card">
     <h3>Phone 1: Transmitter</h3>
-    <label>Message (Bits, e.g. 0100011):</label><br>
-    <input type="text" id="txMsg" value="0100011"><br>
+    <label>Binary Message (up to 20 bits):</label><br>
+    <input type="text" id="txMsg" value="0100110010101111" maxlength="20" pattern="[01]{1,20}"><br>
 
     <label>Simulate Error Bit Index (0-based, or -1 for none):</label><br>
     <input type="number" id="txErr" value="2"><br>

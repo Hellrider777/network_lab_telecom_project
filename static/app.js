@@ -123,7 +123,7 @@ async function startListening() {
   });
   const source = ctx.createMediaStreamSource(stream);
   const analyser = ctx.createAnalyser();
-  analyser.fftSize = 4096; // High frequency resolution
+  analyser.fftSize = 8192; // Resolve the 100 Hz channel spacing
   analyser.smoothingTimeConstant = 0;
   source.connect(analyser);
 
@@ -134,6 +134,7 @@ async function startListening() {
 
   let lastDetectedFreq = 0;
   let toneHoldCount = 0;
+  let stopToneCount = 0;
 
   function matchTone(freq) {
     const all = [...cfg.freqs, cfg.startTone, cfg.stopTone, cfg.syncTone];
@@ -148,19 +149,23 @@ async function startListening() {
       detectedTones = [];
       rxDataStartTime = null;
       rxLastBitTime = null;
+      stopToneCount = 0;
       document.getElementById('rxStatus').innerText = 'Status: Receiving Frame...';
     } else if (freq === cfg.stopTone) {
-      document.getElementById('rxStatus').innerText = 'Status: Frame Received. Processing...';
-      decodeFrame(detectedTones);
+      stopToneCount++;
+      if (stopToneCount >= 2) {
+        document.getElementById('rxStatus').innerText = 'Status: Frame Received. Processing...';
+        decodeFrame(detectedTones);
+      }
     } else if (freq === cfg.syncTone) {
       // Sync marker only — sent before every data tone so that two
       // consecutive identical symbols are always separated by a frequency
       // edge (otherwise they'd be indistinguishable from one long tone).
     } else {
-      const octalVal = cfg.freqs.indexOf(freq);
-      if (octalVal !== -1) {
+      const symbol = cfg.freqs.indexOf(freq);
+      if (symbol !== -1) {
         if (rxDataStartTime === null) rxDataStartTime = ctx.currentTime; // first data tone
-        detectedTones.push(octalVal);
+        detectedTones.push(symbol);
         rxLastBitTime = ctx.currentTime; // moment this data tone was confirmed
       }
     }
@@ -232,7 +237,7 @@ async function decodeFrame(octalArray) {
   const throughputEl = document.getElementById('rxThroughput');
   if (throughputEl) {
     if (rxDataStartTime !== null && rxLastBitTime !== null && rxLastBitTime > rxDataStartTime) {
-      const bitCount = octalArray.length * 3; // 3 bits per detected tone
+      const bitCount = octalArray.length * 4; // 4 bits per detected tone
       const seconds = rxLastBitTime - rxDataStartTime;
       const bps = bitCount / seconds;
       throughputEl.innerText = `Throughput: ${bitCount} bits / ${seconds.toFixed(3)}s = ${bps.toFixed(2)} bps`;

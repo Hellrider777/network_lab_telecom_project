@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Protocol Tester - Acoustic Modem</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <h2>Protocol Tester</h2>
+
+  <div class="card">
+    <h3>Direct Transmit / Receive Test</h3>
+    <label for="testBits">Binary message (1-20 bits):</label><br>
+    <input type="text" id="testBits" value="10011001100110011001" maxlength="20" pattern="[01]{1,20}"><br>
+
+    <label for="testError">Encoded bit error index (-1 for none):</label><br>
+    <input type="number" id="testError" value="12"><br>
+
+    <button id="runTest">RUN DIRECT TEST</button>
+    <div id="testStatus">Status: Ready</div>
+  </div>
+
+  <div class="card">
+    <h3>Test Output</h3>
+    <div class="output" id="expectedOutput">Expected: --</div>
+    <div class="output" id="encodedOutput">Hamming encoded: --</div>
+    <div class="output" id="symbolOutput">Frequency symbols: --</div>
+    <div class="output" id="decodedOutput">Decoded: --</div>
+    <div class="output" id="resultOutput">Result: --</div>
+  </div>
+
+  <script src="{{ url_for('static', filename='tester.js') }}"></script>
+</body>
+</html>

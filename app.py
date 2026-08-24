@@ -2,12 +2,14 @@ from flask import Flask, render_template, jsonify, request
 
 app = Flask(__name__)
 
-FREQS = [1200, 1400, 1600, 1800, 2000, 2200, 2400, 2600]
+FREQS = [1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900,
+         2000, 2100, 2200, 2300, 2400, 2500]
 START_TONE = 3000
 STOP_TONE = 3400
-SYNC_TONE = 800
+SYNC_TONE = 700
 TONE_DUR = 0.20
 INTER_TONE_GAP = 0.04
+LENGTH_HEADER_BITS = 5
 
 
 def encode_hamming74(bits4):
@@ -40,6 +42,11 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/tester')
+def tester():
+    return render_template('tester.html')
+
+
 @app.route('/api/config')
 def config():
     return jsonify(freqs=FREQS, startTone=START_TONE, stopTone=STOP_TONE, syncTone=SYNC_TONE, toneDur=TONE_DUR, interToneGap=INTER_TONE_GAP)
@@ -55,6 +62,11 @@ def transmit():
     if not raw or any(c not in '01' for c in raw):
         return jsonify(error='Message must be a non-empty string of 0/1 bits'), 400
 
+    original_length = len(raw)
+    if original_length >= 2 ** LENGTH_HEADER_BITS:
+        return jsonify(error='Message must be shorter than 32 bits'), 400
+
+    raw = format(original_length, f'0{LENGTH_HEADER_BITS}b') + raw
     while len(raw) % 4 != 0:
         raw += '0'
 
@@ -65,19 +77,19 @@ def transmit():
         bits[err_idx] = '1' if bits[err_idx] == '0' else '0'
     final_bitstream = ''.join(bits)
 
-    while len(final_bitstream) % 3 != 0:
+    while len(final_bitstream) % 4 != 0:
         final_bitstream += '0'
 
     # A SYNC tone precedes every data tone so the receiver always sees a
     # frequency edge before each symbol, even when two symbols in a row
     # carry the same octal value (which would otherwise be indistinguishable
     # from one long tone).
-    sequence = [START_TONE]
-    for i in range(0, len(final_bitstream), 3):
-        octal_val = int(final_bitstream[i:i + 3], 2)
+    sequence = [START_TONE, START_TONE]
+    for i in range(0, len(final_bitstream), 4):
+        symbol = int(final_bitstream[i:i + 4], 2)
         sequence.append(SYNC_TONE)
-        sequence.append(FREQS[octal_val])
-    sequence.append(STOP_TONE)
+        sequence.append(FREQS[symbol])
+    sequence.extend([STOP_TONE, STOP_TONE])
 
     return jsonify(sequence=sequence, encodedBits=encoded, finalBitstream=final_bitstream)
 
@@ -88,17 +100,23 @@ def receive():
     data = request.get_json(force=True)
     octal_array = data.get('octalArray') or []
 
-    raw_bitstream = ''.join(format(int(n), '03b') for n in octal_array)
+    raw_bitstream = ''.join(format(int(n), '04b') for n in octal_array)
 
-    decoded_message = ''
+    decoded_bits = ''
     error_index = -1
 
     for i in range(0, len(raw_bitstream) - 6, 7):
         block = raw_bitstream[i:i + 7]
         data_bits, err_in_block = decode_hamming74(block)
-        decoded_message += data_bits
+        decoded_bits += data_bits
         if err_in_block != -1:
             error_index = i + err_in_block
+
+    if len(decoded_bits) < LENGTH_HEADER_BITS:
+        return jsonify(decodedMessage='', errorIndex=error_index)
+
+    message_length = int(decoded_bits[:LENGTH_HEADER_BITS], 2)
+    decoded_message = decoded_bits[LENGTH_HEADER_BITS:LENGTH_HEADER_BITS + message_length]
 
     return jsonify(decodedMessage=decoded_message, errorIndex=error_index)
 
